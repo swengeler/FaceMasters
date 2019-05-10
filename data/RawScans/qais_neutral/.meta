@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<Artec>
+	<Archive Version="2" Signature="0" />
+	<Author Software="Scanner" Version="12.1.1.12" Author="Artec Group 3D Scanning Software and Solutions" Date="5/9/2019 5:41:36 PM" />
+	<Comment>www.artec-group.com</Comment>
+	<Content SurfaceFormat="2" TransformFormat="0" Encryption="0" Digest="0" Flags="6" DataType="1" />
+	<Scan Name="qais_neutral" Items="1" Device="EV.30.05020436" DepthCameraType="1" TextureCameraType="1" TextureMatrix="5.078 0.0207294 -0.0569372 -1.23532 0.023267 -3.74239 0.725988 423.332 -0.000638846 -0.188836 -0.982009 4.8707" TextureGain="0.295738" TextureIllumination="102.213326">
+		<Textured />
+	</Scan>
+</Artec>
