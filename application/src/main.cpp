@@ -62,9 +62,17 @@ void pca() {
     V_Faces.colwise() -= avg_face;
 
     // calculate eigenvectos and values on covariance matrix of faces
-    EigenSolver<Matrix3d> eig(V_Faces.transpose()*V_Faces); 
+    EigenSolver<MatrixXd> eig(V_Faces.transpose()*V_Faces); 
     eig.eigenvalues();
     eig.eigenvectors();
+
+    // this is the fast way normally XX' would be the cov. matrix so to get to the eigv of the cov matrix
+    // we have to multiply it by X again , maybe normalize eigv. if we need them normalized ? 
+    for (int i = 0; i < eig.eigenvectors().cols(); i++) {
+        //VectorXd i_eigenvector = V_Faces*eig.eigenvectors().col(0);
+    }
+    
+
 
 }
 
