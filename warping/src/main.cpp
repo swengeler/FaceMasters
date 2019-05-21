@@ -54,23 +54,60 @@ bool aligned = false;
 bool constraints_computed = false;
 int initial_constraint_count = -1;
 
+enum MESH_VIEW { VIEW_SCANNED, VIEW_TEMPLATE, VIEW_BOTH};
+MESH_VIEW active_view = VIEW_BOTH;
+
 // other stuff
 int iteration_count = 0;
 
 void display_two_meshes(MatrixXd &V1, MatrixXi &F1, MatrixXd &V2, MatrixXi &F2) {
-	Eigen::MatrixXd V(V1.rows() + V2.rows(), V1.cols());
-	V << V1, V2;
-	Eigen::MatrixXi F(F1.rows() + F2.rows(), F1.cols());
-	F << F1, (F2.array() + V1.rows());
+    Eigen::MatrixXd V;
+    Eigen::MatrixXi F;
+    Eigen::MatrixXd C;
 
-	Eigen::MatrixXd C(F.rows(), 3);
-	C << Eigen::RowVector3d(0.2, 0.3, 0.8).replicate(F1.rows(), 1), Eigen::RowVector3d(1.0, 0.7, 0.2).replicate(F2.rows(), 1);
+    Eigen::MatrixXd point_template(landmarks_template.size(), 3);
+    Eigen::MatrixXd point_scanned(landmarks_scanned.size(), 3);
+
+    for (int i = 0; i < landmarks_scanned.size(); ++i) {
+        point_template.row(i) = V1.row(landmarks_template(i));
+        point_scanned.row(i) = V2.row(landmarks_scanned(i));
+    }
+
+    if (active_view == VIEW_TEMPLATE) {
+        V = V1;
+        F = F1;
+        C.resize(F.rows(), 3);
+        C << Eigen::RowVector3d(0.2, 0.3, 0.8).replicate(F.rows(), 1);
+    } else if (active_view == VIEW_SCANNED) {
+        V = V2;
+        F = F2;
+        C.resize(F.rows(), 3);
+        C << Eigen::RowVector3d(1.0, 0.7, 0.2).replicate(F.rows(), 1);
+    } else {
+        V.resize(V1.rows() + V2.rows(), V1.cols());
+        V << V1, V2;
+        F.resize(F1.rows() + F2.rows(), F1.cols());
+        F << F1, (F2.array() + V1.rows());
+
+        C.resize(F.rows(), 3);
+        C << Eigen::RowVector3d(0.2, 0.3, 0.8).replicate(F1.rows(), 1), Eigen::RowVector3d(1.0, 0.7, 0.2).replicate(F2.rows(), 1);
+    }
 
 	viewer.data().clear();
 	viewer.data().set_mesh(V, F);
 	viewer.data().set_colors(C);
 	viewer.data().set_face_based(true);
 	viewer.core.align_camera_center(V1);
+
+
+    if (active_view == VIEW_BOTH || active_view == VIEW_SCANNED) {
+        viewer.data().add_points(point_scanned, Eigen::RowVector3d(0.0, 1.0, 0.0).replicate(point_scanned.rows(), 1));
+    }
+
+    if (active_view == VIEW_BOTH || active_view == VIEW_TEMPLATE) {
+        viewer.data().add_points(point_template, Eigen::RowVector3d(1.0, 0.0, 0.0).replicate(point_template.rows(), 1));
+    }
+
 }
 
 void rigid_align() {
@@ -273,9 +310,181 @@ void init() {
     tree_template.init(V_template, F_template);
     tree_scanned.init(V_scanned, F_scanned);
 
+    igl::per_face_normals(V_template, F_template, Vector3d(1, 1, 1).normalized(), N_template);
     igl::per_face_normals(V_scanned, F_scanned, Vector3d(1, 1, 1).normalized(), N_scanned);
 }
 
+
+MatrixXi F_boundary;
+MatrixXd V_boundary;
+
+void build_dynamic_constraints(SparseMatrix<double> &A, MatrixXd &rhs) {
+
+    // These two should be precomputed after alignment
+    tree_scanned.init(V_scanned, F_scanned);
+    igl::per_face_normals(V_scanned, F_scanned, Vector3d(1, 1, 1).normalized(), N_scanned);
+
+    
+    igl::per_face_normals(V_template, F_template, Vector3d(1, 1, 1).normalized(), N_template);
+
+    // compute average distance of vertices in the template to the scanned face
+    VectorXd squared_distances;
+    VectorXi face_indices;
+    MatrixXd closest_points;
+    tree_scanned.squared_distance(V_scanned, F_scanned, V_template, squared_distances, face_indices, closest_points);
+
+    // also compute distances to boundary
+    VectorXd boundary_distances;
+    VectorXi temp1;
+    MatrixXd temp2;
+    boundary_tree.squared_distance(V_boundary, F_boundary, V_template, boundary_distances, temp1, temp2);
+
+    double average_distance = squared_distances.array().sqrt().mean();
+
+    // add constraint for each template vertex that fulfills the requirements
+    // would be best to resize constraint matrices here already...
+    Vector3d vertex_template, normal_template, normal_scanned, closest_point_scanned, diff_scanned_template;
+    int constraint_count = 0;
+   
+    vector<Triplet<double>> lhs_vector;
+    vector<RowVector3d> rhs_vector;
+    for (int i = 0; i < V_template.rows(); i++) {
+        // if the vertex is on the boundary a constraint already exists
+        if ((boundary_indices.array() == i).any()) {
+            continue;
+        }
+
+        // if the vertex is landmark, also ignore
+        if ((landmarks_template.array() == i).any()) {
+            continue;
+        }
+
+        // assign or compute the necessary points and vectors
+        vertex_template = V_template.row(i);
+        normal_template = N_template.row(i);
+        normal_scanned = N_scanned.row(face_indices(i)); // NOTE: these are per-face normals!
+        closest_point_scanned = closest_points.row(i);
+        diff_scanned_template = closest_point_scanned - vertex_template;
+
+        // if the template vertex is too far away from the mesh, it should just be unconstrained
+        if (diff_scanned_template.norm() > average_distance * threshold_distance_percentage) {
+            continue;
+        }
+
+        // if the normals of the template vertex and the closest point in different directions the vertex is unconstrained
+        if (normal_template.dot(normal_scanned) < threshold_parallel_angle_tolerance) {
+            continue;
+        }
+
+        // similarly, if the template vertex normal points in a different direction to the difference vector, skip this vertex
+        diff_scanned_template.normalize();
+        if (abs(diff_scanned_template.dot(normal_template)) < 0.5) {
+            continue;
+        }
+
+        double sigma = 2.5; // not sure how they got this number
+        double distance_to_boundary = sqrt(boundary_distances(i));
+        distance_to_boundary = (1.0 / (1.0 + exp(-(distance_to_boundary - sigma) * (6.0 / sigma))));
+
+        double weight = pow(normal_template.dot(normal_scanned), 10) * distance_to_boundary * lambda;
+
+        lhs_vector.push_back(Triplet<double>(constraint_count, i, weight));
+        rhs_vector.push_back(closest_point_scanned *  weight);
+        constraint_count++;
+    }
+
+    A.resize(constraint_count, V_template.rows());
+    A.setZero();
+    A.setFromTriplets(lhs_vector.begin(), lhs_vector.end());
+
+    rhs.resize(constraint_count, 3);
+    for (int i = 0; i < constraint_count; i++) {
+        rhs.row(i) = rhs_vector[i];
+    }
+}
+
+
+void warping_step() {
+
+    double c_weight = lambda * 10;
+
+    MatrixXd V = V_template;
+    MatrixXd V_target = V_scanned;
+    SparseMatrix<double> C_full;
+    MatrixXd C_full_rhs;
+    MatrixXd rhs_fixed;
+    SparseMatrix<double> C;
+    MatrixXd rhs;
+
+    SimplicialCholesky<SparseMatrix<double>> solver;
+    SparseMatrix<double> laplacian;
+
+
+    // Boundary and landmark contraints
+    {
+        vector<vector<int>> boundary_loops;
+        igl::boundary_loop(F_template, boundary_loops);
+        vector<int> loop = boundary_loops[0];
+
+        C.resize(landmarks_template.size() + loop.size(), V.rows());
+        rhs_fixed.resize(landmarks_template.size() + loop.size(), 3);
+
+        for (int i = 0; i < landmarks_template.size(); ++i) {
+            C.insert(i, landmarks_template(i)) = c_weight;
+            rhs_fixed.row(i) = c_weight * V_scanned.row(landmarks_scanned(i));
+        }
+
+        boundary_indices.resize(loop.size());
+
+        F_boundary.resize(loop.size(), 3);
+
+        for (int i = 0; i < loop.size(); ++i) {
+            boundary_indices(i) = loop[i];
+            F_boundary.row(i) = RowVector3i(i, i, i);
+
+            int t_i = i + landmarks_template.size();
+            C.insert(t_i, loop[i]) = c_weight * 10.0;
+            rhs_fixed.row(t_i) = c_weight * 10.0 * V.row(loop[i]);
+        }
+    
+        igl::slice(V_template, boundary_indices, 1, V_boundary);
+
+        boundary_tree.init(V_boundary, F_boundary);
+    }
+
+    // Build dynamic constants from closest point on mesh
+    SparseMatrix<double> C_dynamic;
+    MatrixXd C_dynamic_rhs;
+    build_dynamic_constraints(C_dynamic, C_dynamic_rhs);
+
+    // Add contraints together
+    igl::cat(1, C, C_dynamic, C_full);
+    igl::cat(1, rhs_fixed, C_dynamic_rhs, C_full_rhs);
+
+
+    // Laplacian part of linear system
+    igl::cotmatrix(V, F_template, laplacian);
+    laplacian = -laplacian;
+    rhs = laplacian * V;
+
+
+    // Add together linear system
+    Eigen::SparseMatrix<double> Afull;
+    igl::cat(1, laplacian, C_full, Afull);
+    MatrixXd rhs_full;
+    igl::cat(1, rhs, C_full_rhs, rhs_full);
+    
+    // Solve
+    rhs_full = Afull.transpose() * rhs_full;
+    Afull = Afull.transpose() * Afull;
+    Afull.makeCompressed();
+    solver.compute(Afull);
+    V_template = solver.solve(rhs_full);
+
+    // Store and show mesh
+    V_template.conservativeResize(laplacian.rows(), 3);
+    display_two_meshes(V_template, F_template, V_scanned, F_scanned);
+}
 
 void readLandmark(string fileName, MatrixXd &points, VectorXi &indices, const MatrixXd &V_) {
     ifstream landfile(fileName);
@@ -303,6 +512,10 @@ void readLandmark(string fileName, MatrixXd &points, VectorXi &indices, const Ma
 
 bool callback_key_down(Viewer &viewer, unsigned char key, int modifiers) {
     if (key == 'I') {
+        warping_step();
+        return true;
+
+        // Previous version
         if (initial_constraint_count == -1) {
             compute_initial_constraints();
         }
@@ -312,6 +525,22 @@ bool callback_key_down(Viewer &viewer, unsigned char key, int modifiers) {
 
     if (key == 'R') {
         rigid_align();
+    }
+
+    if (key >= '1' && key <= '3') {
+        switch (key)
+        {
+        case '1':
+            active_view = VIEW_SCANNED;
+            break;
+        case '2':
+            active_view = VIEW_TEMPLATE;
+            break;
+        case '3':
+            active_view = VIEW_BOTH;
+            break;
+        }
+        display_two_meshes(V_template, F_template, V_scanned, F_scanned);
     }
 
     return true;
@@ -356,6 +585,10 @@ int main(int argc, char *argv[]) {
 
             if (ImGui::Button("Rigidly align", ImVec2(-1, 0))) {
                 rigid_align();
+            }
+
+            if (ImGui::Button("Warping step", ImVec2(-1, 0))) {
+                warping_step();
             }
 
             if (ImGui::Button("Save mesh", ImVec2(-1, 0))) {
