@@ -12,18 +12,18 @@
 #include <igl/per_face_normals.h>
 #include <igl/cotmatrix.h>
 #include <igl/cat.h>
+#include <fstream>
 
 using namespace Eigen;
 using namespace std;
 using Viewer = igl::opengl::glfw::Viewer;
-
-Viewer viewer;
 
 // scanned face data
 MatrixXd V_template;
 MatrixXd N_template;
 MatrixXi F_template;
 VectorXi landmarks_template;
+MatrixXd landmarks_template_points;
 igl::AABB<MatrixXd, 3> tree_template;
 
 // scanned data
@@ -31,6 +31,7 @@ MatrixXd V_scanned;
 MatrixXd N_scanned;
 MatrixXi F_scanned;
 VectorXi landmarks_scanned;
+MatrixXd landmarks_scanned_points;
 igl::AABB<MatrixXd, 3> tree_scanned;
 
 // other data structures
@@ -159,6 +160,8 @@ void compute_constraints() {
     constraints_computed = true;
 }
 
+
+
 void compute_initial_constraints() {
     // compute the constraints for landmarked points and the boundary
     if (landmarks_template.size() != landmarks_scanned.size()) {
@@ -184,7 +187,7 @@ void compute_initial_constraints() {
     boundary_indices.resize(boundary_loops[0].size());
     constraint_matrix_static.conservativeResize(constraint_matrix_static.rows() + boundary_indices.size(), V_template.rows());
     constraint_rhs_static.conservativeResize(constraint_matrix_static.rows(), 3);
-    MatrixXi boundary_faces(boundary_indices, 3);
+    MatrixXi boundary_faces(boundary_indices.rows(), 3);
     for (int i = 0; i < boundary_loops[0].size(); i++) {
         boundary_indices(i) = (int) boundary_loops[0][i];
         // add constraint with large weight of 10 => boundary should roughly stay the same
@@ -219,10 +222,20 @@ bool callback_key_down(Viewer &viewer, unsigned char key, int modifiers) {
     return true;
 }
 
+void readLandmark(string fileName, MatrixXd &points, const MatrixXd &V_) {
+    std::ifstream landfile(fileName);
+    int v1, v2, v3;
+    float alpha, beta, gamma;
+    while (landfile >> v1 >> v2 >> v3 >> alpha >> beta >> gamma) {
+        points.conservativeResize(points.rows() + 1, 3);
+        points.row(points.rows() -1) =  V_.row(v1)*alpha + V_.row(v2)*beta + V_.row(v3)*gamma;
+    }
+}
+
 int main(int argc, char *argv[]) {
     string file_name;
     if (argc != 2) {
-        cout << "Usage: alignment <scanned_face.obj>" << endl;
+        cout << "Usage: alignment <scanned_face>" << endl;
         return 0;
     } 
 
@@ -231,13 +244,18 @@ int main(int argc, char *argv[]) {
     MatrixXd temp1;
     MatrixXi temp2, temp3;
     igl::readOBJ("../data/template.obj", V_template, temp1, N_template, F_template, temp2, temp3);
-    igl::readOBJ(argv[1], V_scanned, temp1, N_scanned, F_scanned, temp2, temp3);
+    readLandmark("../data/template.mark", landmarks_template_points, V_template);
 
+    file_name = argv[1];
+    igl::readOBJ( file_name + ".obj", V_scanned, temp1, N_scanned, F_scanned, temp2, temp3);
+    readLandmark( file_name + ".mark", landmarks_scanned_points, V_scanned);
+    
+    Viewer viewer;
     viewer.data().clear();
     viewer.data().set_mesh(V_template, F_template);
     viewer.core.align_camera_center(V_template);
 
-    file_name = argv[1];
+    
     size_t index = file_name.find_last_of("/");
     file_name = file_name.substr(index + 1);
     init();
