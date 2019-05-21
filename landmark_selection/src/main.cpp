@@ -1,11 +1,12 @@
 #include <igl/readOBJ.h>
+#include <igl/read_triangle_mesh.h>
 #include <igl/opengl/glfw/Viewer.h>
 #include <igl/opengl/glfw/imgui/ImGuiMenu.h>
 #include <igl/opengl/glfw/imgui/ImGuiHelpers.h>
 #include <imgui/imgui.h>
 #include <iostream>
 #include <igl/unproject_onto_mesh.h>
-#include <string> 
+#include <string>
 
 using namespace Eigen;
 using namespace std;
@@ -13,7 +14,7 @@ using namespace std;
 
 typedef igl::opengl::glfw::Viewer Viewer;
 
-
+Viewer viewer;
 bool callback_pre_draw(Viewer& viewer);
 void writeOut(string placeToBe);
 
@@ -36,10 +37,10 @@ bool mouse_down(Viewer& viewer, int button, int modifier) {
 
     if (selecting) {
         Eigen::Vector3f baryC;
-        int fid;     
+        int fid;
         if(igl::unproject_onto_mesh(Eigen::Vector2f(x,y), viewer.core.view,
             viewer.core.proj, viewer.core.viewport, V, F, fid, baryC)) {
-            
+
             int v1 = F(fid, 0), v2 = F(fid, 1), v3 = F(fid, 2);
             float alpha = baryC[0], beta = baryC[1], gamma = baryC[2];
 
@@ -56,6 +57,17 @@ bool mouse_down(Viewer& viewer, int button, int modifier) {
 }
 
 
+bool load_mesh(string filename)
+{
+  igl::read_triangle_mesh(filename,V,F);
+  viewer.data().clear();
+  viewer.data().set_mesh(V, F);
+
+  viewer.core.align_camera_center(V);
+  return true;
+}
+
+
 int main(int argc, char *argv[]) {
     string faceName;
     if(argc == 1) {
@@ -65,10 +77,10 @@ int main(int argc, char *argv[]) {
         return 0;
     } else {
         faceName = string(argv[1]);
-        igl::readOBJ(faceName, V, F);
+        //igl::readOBJ(faceName, V, F);
+        load_mesh(faceName);
     }
 
-    Viewer viewer;
     igl::opengl::glfw::imgui::ImGuiMenu menu;
     viewer.plugins.push_back(&menu);
 
@@ -94,10 +106,8 @@ int main(int argc, char *argv[]) {
                 Landmark mark = landmarks[i];
                 RowVector3d point = V.row(mark.v1)*mark.alpha + V.row(mark.v2)*mark.beta + V.row(mark.v3)*mark.gamma;
                 string ctr = std::to_string(i);
-                viewer.data().add_label(point, ctr);    
+                viewer.data().add_label(point, ctr);
             }
-
-            
         }
 
         if (ImGui::Button("Save"))  {
@@ -110,7 +120,7 @@ int main(int argc, char *argv[]) {
     viewer.callback_mouse_down = &mouse_down;
     viewer.callback_pre_draw = callback_pre_draw;
 
-    viewer.data().set_mesh(V, F);
+    //viewer.data().set_mesh(V, F);
     viewer.launch();
 }
 
@@ -124,6 +134,7 @@ bool callback_pre_draw(Viewer& viewer) {
         RowVector3d point = V.row(mark.v1)*mark.alpha + V.row(mark.v2)*mark.beta + V.row(mark.v3)*mark.gamma;
         viewer.data().add_points(point, Eigen::RowVector3d(0.0,0.5,0.3));
     }
+    return false;
 }
 
 bool replace(string& str, const string& from, const string& to) {
@@ -148,7 +159,5 @@ void writeOut(string placeToBe) {
     for (int i = 0; i < landmarks.size(); i++) {
         Landmark m = landmarks[i];
         s << i << " " << m.v1 << " " << m.v2 << " " << m.v3 << " " << m.alpha << " " << m.beta << " " << m.gamma << "\n";
-    }    
-
-
+    }
 }
