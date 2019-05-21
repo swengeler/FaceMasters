@@ -6,6 +6,8 @@
 #include <iostream>
 #include <igl/unproject_onto_mesh.h>
 #include <string> 
+#include <igl/png/render_to_png.h>
+#include <igl/png/writePNG.h>
 
 using namespace Eigen;
 using namespace std;
@@ -55,6 +57,13 @@ bool mouse_down(Viewer& viewer, int button, int modifier) {
     return false;
 }
 
+bool replace(string& str, const string& from, const string& to) {
+    size_t start_pos = str.find(from);
+    if(start_pos == std::string::npos)
+        return false;
+    str.replace(start_pos, from.length(), to);
+    return true;
+}
 
 int main(int argc, char *argv[]) {
     string faceName;
@@ -71,6 +80,7 @@ int main(int argc, char *argv[]) {
     Viewer viewer;
     igl::opengl::glfw::imgui::ImGuiMenu menu;
     viewer.plugins.push_back(&menu);
+    viewer.core.align_camera_center(V);
 
 
     // Draw additional windows
@@ -102,6 +112,22 @@ int main(int argc, char *argv[]) {
 
         if (ImGui::Button("Save"))  {
             writeOut(faceName);
+            string copyf = faceName;
+            replace(copyf, ".obj", ".png");
+
+            // Allocate temporary buffers
+            Eigen::Matrix<unsigned char,Eigen::Dynamic,Eigen::Dynamic> R(1280,800);
+            Eigen::Matrix<unsigned char,Eigen::Dynamic,Eigen::Dynamic> G(1280,800);
+            Eigen::Matrix<unsigned char,Eigen::Dynamic,Eigen::Dynamic> B(1280,800);
+            Eigen::Matrix<unsigned char,Eigen::Dynamic,Eigen::Dynamic> A(1280,800);
+
+            // Draw the scene in the buffers
+            viewer.core.draw_buffer(viewer.data(),false,R,G,B,A);
+
+            // Save it to a PNG
+            igl::png::writePNG(R,G,B,A, copyf);
+
+            //igl::png::render_to_png(copyf, 1024, 1024);
         }
 
         ImGui::End();
@@ -126,13 +152,6 @@ bool callback_pre_draw(Viewer& viewer) {
     }
 }
 
-bool replace(string& str, const string& from, const string& to) {
-    size_t start_pos = str.find(from);
-    if(start_pos == std::string::npos)
-        return false;
-    str.replace(start_pos, from.length(), to);
-    return true;
-}
 
 
 void writeOut(string placeToBe) {

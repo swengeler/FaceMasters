@@ -13,4 +13,6 @@ find_package(LIBIGL REQUIRED QUIET)
 # Add your project files
 FILE(GLOB SRCFILES src/*.cpp)
 add_executable(${PROJECT_NAME} ${SRCFILES})
-target_link_libraries(${PROJECT_NAME} igl::core igl::opengl_glfw igl::opengl_glfw_imgui)
+target_link_libraries(${PROJECT_NAME} igl::core igl::opengl_glfw igl::opengl_glfw_imgui igl::png)
+
+# call cmake with cmake .. -DLIBIGL_WITH_PNG=ON
