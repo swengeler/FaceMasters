@@ -57,6 +57,22 @@ int initial_constraint_count = -1;
 // other stuff
 int iteration_count = 0;
 
+void display_two_meshes(MatrixXd &V1, MatrixXi &F1, MatrixXd &V2, MatrixXi &F2) {
+	Eigen::MatrixXd V(V1.rows() + V2.rows(), V1.cols());
+	V << V1, V2;
+	Eigen::MatrixXi F(F1.rows() + F2.rows(), F1.cols());
+	F << F1, (F2.array() + V1.rows());
+
+	Eigen::MatrixXd C(F.rows(), 3);
+	C << Eigen::RowVector3d(0.2, 0.3, 0.8).replicate(F1.rows(), 1), Eigen::RowVector3d(1.0, 0.7, 0.2).replicate(F2.rows(), 1);
+
+	viewer.data().clear();
+	viewer.data().set_mesh(V, F);
+	viewer.data().set_colors(C);
+	viewer.data().set_face_based(true);
+	viewer.core.align_camera_center(V1);
+}
+
 void rigid_align() {
     // move template and scanned face to center
     RowVector3d mean_template = V_template.colwise().mean();
@@ -101,11 +117,7 @@ void rigid_align() {
     Eigen::MatrixXd C(F.rows(), 3);
     C << Eigen::RowVector3d(0.2, 0.3, 0.8).replicate(F_template.rows(), 1),  Eigen::RowVector3d(1.0, 0.7, 0.2).replicate(F_scanned.rows(), 1);
 
-    viewer.data().clear();
-    viewer.data().set_mesh(V, F);
-    viewer.data().set_colors(C);
-    viewer.data().set_face_based(true);
-    viewer.core.align_camera_center(V_template);
+    display_two_meshes(V_template, F_template, V_scanned, F_scanned);
 
     aligned = true;
 }
@@ -189,7 +201,7 @@ void compute_constraints() {
         }
 
         // if the normals of the template vertex and the closest point in different directions the vertex is unconstrained
-        if (normal_template.dot(normal_scanned) < threshold_parallel_angle_tolerance) { 
+        if (normal_template.dot(normal_scanned) < threshold_parallel_angle_tolerance) {
             // TODO: need to check whether the normals are already normalized
             continue;
         }
@@ -212,7 +224,7 @@ void compute_constraints() {
     }
     constraint_matrix_dynamic.setFromTriplets(constraint_matrix_coefficients.begin(), constraint_matrix_coefficients.end());
     constraint_rhs_dynamic = Map<MatrixXd>(constraint_rhs_list.data(), dynamic_constraint_count, 3);
-    
+
     constraints_computed = true;
 }
 
@@ -265,7 +277,7 @@ void init() {
 }
 
 
-void readLandmark(string fileName, MatrixXd &points, const MatrixXd &V_) {
+void readLandmark(string fileName, MatrixXd &points, VectorXi &indices, const MatrixXd &V_) {
     ifstream landfile(fileName);
     int index, v1, v2, v3;
     float alpha, beta, gamma;
@@ -275,6 +287,17 @@ void readLandmark(string fileName, MatrixXd &points, const MatrixXd &V_) {
         line_stream >> index >> v1 >> v2 >> v3 >> alpha >> beta >> gamma;
         points.conservativeResize(points.rows() + 1, 3);
         points.row(points.rows() - 1) = V_.row(v1) * alpha + V_.row(v2) * beta + V_.row(v3) * gamma;
+
+        // Choose max for landmark vertex
+        indices.conservativeResize(indices.size() + 1);
+        float max_v = max(alpha, max(beta, gamma)) - 1e-5;
+        if (alpha > max_v) {
+          indices(indices.size() - 1) = v1;
+        } else if (beta > max_v) {
+          indices(indices.size() - 1) = v2;
+        } else {
+          indices(indices.size() - 1) = v3;
+        }
     }
 }
 
@@ -298,25 +321,22 @@ int main(int argc, char *argv[]) {
     string file_name;
     if (argc != 2) {
         cout << "Usage: alignment <scanned_face>" << endl;
-        return 0;
-    } 
+        file_name = "../data/simonw_neutral_corrected";
+    } else {
+        file_name = argv[1];
+    }
 
     // load data and initialize everything
-    // TODO: also need to load landmarks
     MatrixXd temp1;
     MatrixXi temp2, temp3;
     igl::readOBJ("../data/template.obj", V_template, temp1, N_template, F_template, temp2, temp3);
-    readLandmark("../data/template.mark", landmarks_template_points, V_template);
+    readLandmark("../data/template.mark", landmarks_template_points, landmarks_template, V_template);
 
-    file_name = argv[1];
     igl::readOBJ( file_name + ".obj", V_scanned, temp1, N_scanned, F_scanned, temp2, temp3);
-    readLandmark( file_name + ".mark", landmarks_scanned_points, V_scanned);
-    
-    viewer.data().clear();
-    viewer.data().set_mesh(V_template, F_template);
-    viewer.core.align_camera_center(V_template);
+    readLandmark( file_name + ".mark", landmarks_scanned_points, landmarks_scanned, V_scanned);
 
-    
+    display_two_meshes(V_template, F_template, V_scanned, F_scanned);
+
     size_t index = file_name.find_last_of("/");
     file_name = file_name.substr(index + 1);
     init();
@@ -346,4 +366,3 @@ int main(int argc, char *argv[]) {
 
     viewer.launch();
 }
-
