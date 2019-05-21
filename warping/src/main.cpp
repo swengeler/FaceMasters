@@ -18,6 +18,8 @@ using namespace Eigen;
 using namespace std;
 using Viewer = igl::opengl::glfw::Viewer;
 
+Viewer viewer;
+
 // scanned face data
 MatrixXd V_template;
 MatrixXd N_template;
@@ -48,11 +50,65 @@ SparseMatrix<double> constraint_matrix_static;
 SparseMatrix<double> constraint_matrix_dynamic;
 MatrixXd constraint_rhs_static;
 MatrixXd constraint_rhs_dynamic;
+bool aligned = false;
 bool constraints_computed = false;
 int initial_constraint_count = -1;
 
 // other stuff
 int iteration_count = 0;
+
+void rigid_align() {
+    // move template and scanned face to center
+    RowVector3d mean_template = V_template.colwise().mean();
+    V_template = V_template.rowwise() - mean_template;
+    landmarks_template_points = landmarks_template_points.rowwise() - mean_template;
+
+    RowVector3d mean_scanned = V_scanned.colwise().mean();
+    V_scanned = V_scanned.rowwise() - mean_scanned;
+    landmarks_scanned_points = landmarks_scanned_points.rowwise() - mean_scanned;
+
+    // scale the template
+    RowVector3d mean_landmark_template = landmarks_template_points.colwise().mean();
+    double mean_distance_template = (landmarks_template_points.rowwise() - mean_landmark_template).rowwise().norm().mean();
+
+    RowVector3d mean_landmark_scanned = landmarks_scanned_points.colwise().mean();
+    double mean_distance_scanned = (landmarks_scanned_points.rowwise() - mean_landmark_scanned).rowwise().norm().mean();
+
+    double scaling_factor = mean_distance_scanned / mean_distance_template;
+
+    V_template = V_template * scaling_factor;
+    landmarks_template_points = landmarks_template_points * scaling_factor;
+
+    // do rigid alignment using landmark points
+    // compute "covariance" matrix of landmarks
+    MatrixXd covariance_matrix = landmarks_template_points.transpose() * landmarks_scanned_points; // points should be column vectors here
+
+    // compute SVD and rotation matrix
+    JacobiSVD<MatrixXd> svd(covariance_matrix, ComputeFullU | ComputeFullV);
+    MatrixXd optimal_rotation_matrix = svd.matrixV() * svd.matrixU().transpose();
+
+    // compute rotated points
+    V_template = (optimal_rotation_matrix * V_template.transpose()).transpose();
+    cout << "V_template shape: " << V_template.rows() << "x" << V_template.cols() << endl;
+    cout << V_template.row(0) << endl;
+
+    // most of this can be commented out/removed, it's just to check whether the faces align somewhat reasonably
+    Eigen::MatrixXd V(V_template.rows() + V_scanned.rows(), V_template.cols());
+    V << V_template, V_scanned;
+    Eigen::MatrixXi F(F_template.rows() + F_scanned.rows(), F_template.cols());
+    F<< F_template, (F_scanned.array() + V_template.rows());
+
+    Eigen::MatrixXd C(F.rows(), 3);
+    C << Eigen::RowVector3d(0.2, 0.3, 0.8).replicate(F_template.rows(), 1),  Eigen::RowVector3d(1.0, 0.7, 0.2).replicate(F_scanned.rows(), 1);
+
+    viewer.data().clear();
+    viewer.data().set_mesh(V, F);
+    viewer.data().set_colors(C);
+    viewer.data().set_face_based(true);
+    viewer.core.align_camera_center(V_template);
+
+    aligned = true;
+}
 
 void iterate() {
     // one warping iteration
@@ -160,8 +216,6 @@ void compute_constraints() {
     constraints_computed = true;
 }
 
-
-
 void compute_initial_constraints() {
     // compute the constraints for landmarked points and the boundary
     if (landmarks_template.size() != landmarks_scanned.size()) {
@@ -210,6 +264,20 @@ void init() {
     igl::per_face_normals(V_scanned, F_scanned, Vector3d(1, 1, 1).normalized(), N_scanned);
 }
 
+
+void readLandmark(string fileName, MatrixXd &points, const MatrixXd &V_) {
+    ifstream landfile(fileName);
+    int index, v1, v2, v3;
+    float alpha, beta, gamma;
+    string line;
+    while (getline(landfile, line)) {
+        stringstream line_stream(line);
+        line_stream >> index >> v1 >> v2 >> v3 >> alpha >> beta >> gamma;
+        points.conservativeResize(points.rows() + 1, 3);
+        points.row(points.rows() - 1) = V_.row(v1) * alpha + V_.row(v2) * beta + V_.row(v3) * gamma;
+    }
+}
+
 bool callback_key_down(Viewer &viewer, unsigned char key, int modifiers) {
     if (key == 'I') {
         if (initial_constraint_count == -1) {
@@ -219,17 +287,11 @@ bool callback_key_down(Viewer &viewer, unsigned char key, int modifiers) {
         iterate();
     }
 
-    return true;
-}
-
-void readLandmark(string fileName, MatrixXd &points, const MatrixXd &V_) {
-    std::ifstream landfile(fileName);
-    int v1, v2, v3;
-    float alpha, beta, gamma;
-    while (landfile >> v1 >> v2 >> v3 >> alpha >> beta >> gamma) {
-        points.conservativeResize(points.rows() + 1, 3);
-        points.row(points.rows() -1) =  V_.row(v1)*alpha + V_.row(v2)*beta + V_.row(v3)*gamma;
+    if (key == 'R') {
+        rigid_align();
     }
+
+    return true;
 }
 
 int main(int argc, char *argv[]) {
@@ -250,7 +312,6 @@ int main(int argc, char *argv[]) {
     igl::readOBJ( file_name + ".obj", V_scanned, temp1, N_scanned, F_scanned, temp2, temp3);
     readLandmark( file_name + ".mark", landmarks_scanned_points, V_scanned);
     
-    Viewer viewer;
     viewer.data().clear();
     viewer.data().set_mesh(V_template, F_template);
     viewer.core.align_camera_center(V_template);
@@ -272,6 +333,10 @@ int main(int argc, char *argv[]) {
         // add new group
         if (ImGui::CollapsingHeader("Warping options", ImGuiTreeNodeFlags_DefaultOpen)) {
             ImGui::InputDouble("Lambda", &lambda, 0, 0);
+
+            if (ImGui::Button("Rigidly align", ImVec2(-1, 0))) {
+                rigid_align();
+            }
 
             if (ImGui::Button("Save mesh", ImVec2(-1, 0))) {
                 igl::writeOBJ("../results/" + file_name, V_template, F_template);
