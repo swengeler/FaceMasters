@@ -41,7 +41,7 @@ VectorXi boundary_indices;
 igl::AABB<MatrixXd, 3> boundary_tree;
 
 // hyperparameters
-double lambda = 2.5;
+double lambda = 0.05;
 double threshold_distance_percentage = 0.8;
 double threshold_parallel_angle_tolerance = 0.6;
 
