@@ -42,6 +42,7 @@ igl::AABB<MatrixXd, 3> boundary_tree;
 
 // hyperparameters
 double lambda = 0.05;
+double sigma = 5;
 double threshold_distance_percentage = 0.8;
 double threshold_parallel_angle_tolerance = 0.6;
 bool use_scanned_boundary = false;
@@ -111,6 +112,8 @@ void display_two_meshes(MatrixXd &V1, MatrixXi &F1, MatrixXd &V2, MatrixXi &F2) 
 
 }
 
+double scaling_factor;
+
 void rigid_align() {
     // move template and scanned face to center
     RowVector3d mean_template = V_template.colwise().mean();
@@ -128,7 +131,7 @@ void rigid_align() {
     RowVector3d mean_landmark_scanned = landmarks_scanned_points.colwise().mean();
     double mean_distance_scanned = (landmarks_scanned_points.rowwise() - mean_landmark_scanned).rowwise().norm().mean();
 
-    double scaling_factor = mean_distance_scanned / mean_distance_template;
+    scaling_factor = mean_distance_scanned / mean_distance_template;
 
     V_template = V_template * scaling_factor;
     landmarks_template_points = landmarks_template_points * scaling_factor;
@@ -383,9 +386,9 @@ void build_dynamic_constraints(SparseMatrix<double> &A, MatrixXd &rhs) {
             continue;
         }
 
-        double sigma = 2.5; // not sure how they got this number
+        double scaled_sigma = sigma * scaling_factor; // not sure how they got this number
         double distance_to_boundary = sqrt(boundary_distances(i));
-        distance_to_boundary = (1.0 / (1.0 + exp(-(distance_to_boundary - sigma) * (6.0 / sigma))));
+        distance_to_boundary = (1.0 / (1.0 + exp(-(distance_to_boundary - scaled_sigma) * (6.0 / scaled_sigma))));
 
         double weight = pow(normal_template.dot(normal_scanned), 10) * distance_to_boundary * lambda;
 
@@ -600,6 +603,7 @@ int main(int argc, char *argv[]) {
         // add new group
         if (ImGui::CollapsingHeader("Warping options", ImGuiTreeNodeFlags_DefaultOpen)) {
             ImGui::InputDouble("Lambda", &lambda, 0, 0);
+            ImGui::InputDouble("Sigma", &sigma, 0, 0);
 
             ImGui::Checkbox("Use scanned boundary", &use_scanned_boundary);
 
