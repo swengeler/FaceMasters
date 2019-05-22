@@ -55,6 +55,10 @@ bool aligned = false;
 bool constraints_computed = false;
 int initial_constraint_count = -1;
 
+// rigid alignment information
+MatrixXd optimal_rotation_matrix;
+double scaling_factor;
+
 enum MESH_VIEW { VIEW_SCANNED, VIEW_TEMPLATE, VIEW_BOTH};
 MESH_VIEW active_view = VIEW_BOTH;
 
@@ -128,7 +132,7 @@ void rigid_align() {
     RowVector3d mean_landmark_scanned = landmarks_scanned_points.colwise().mean();
     double mean_distance_scanned = (landmarks_scanned_points.rowwise() - mean_landmark_scanned).rowwise().norm().mean();
 
-    double scaling_factor = mean_distance_scanned / mean_distance_template;
+    scaling_factor = mean_distance_scanned / mean_distance_template;
 
     V_template = V_template * scaling_factor;
     landmarks_template_points = landmarks_template_points * scaling_factor;
@@ -139,7 +143,7 @@ void rigid_align() {
 
     // compute SVD and rotation matrix
     JacobiSVD<MatrixXd> svd(covariance_matrix, ComputeFullU | ComputeFullV);
-    MatrixXd optimal_rotation_matrix = svd.matrixV() * svd.matrixU().transpose();
+    optimal_rotation_matrix = svd.matrixV() * svd.matrixU().transpose();
 
     // compute rotated points
     V_template = (optimal_rotation_matrix * V_template.transpose()).transpose();
@@ -612,7 +616,9 @@ int main(int argc, char *argv[]) {
             }
 
             if (ImGui::Button("Save mesh", ImVec2(-1, 0))) {
-                igl::writeOBJ(file_name + "_warped.obj", V_template, F_template);
+                MatrixXd V_output = (V_template.rowwise() - V_template.colwise().mean()) * optimal_rotation_matrix.inverse().transpose();
+                V_output /= scaling_factor;
+                igl::writeOBJ(file_name + "_warped.obj", V_output, F_template);
             }
         }
     };
