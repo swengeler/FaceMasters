@@ -44,6 +44,7 @@ igl::AABB<MatrixXd, 3> boundary_tree;
 double lambda = 0.05;
 double threshold_distance_percentage = 0.8;
 double threshold_parallel_angle_tolerance = 0.6;
+bool use_scanned_boundary = false;
 
 // constraints
 SparseMatrix<double> constraint_matrix_static;
@@ -438,13 +439,29 @@ void warping_step() {
 
         F_boundary.resize(loop.size(), 3);
 
+        // get boundary loop of scanned vertices
+        igl::boundary_loop(F_scanned, boundary_loops);
+        vector<int> scanned_loop = boundary_loops[0];
+        MatrixXd V_target_boundary(scanned_loop.size(), V_scanned.cols());
+        for (int i = 0; i < scanned_loop.size(); i++) {
+            V_target_boundary.row(i) = V_scanned.row(scanned_loop[i]);
+        }
+
         for (int i = 0; i < loop.size(); ++i) {
             boundary_indices(i) = loop[i];
             F_boundary.row(i) = RowVector3i(i, i, i);
 
             int t_i = i + landmarks_template.size();
-            C.insert(t_i, loop[i]) = c_weight * 10.0;
-            rhs_fixed.row(t_i) = c_weight * 10.0 * V.row(loop[i]);
+            C.insert(t_i, loop[i]) = c_weight * 1.0;
+            if (!use_scanned_boundary) {
+                // use original point on the template
+                rhs_fixed.row(t_i) = c_weight * 1.0 * V.row(loop[i]);
+            } else {
+                // use closest point on scanned face boundary
+                int min;
+                (V_target_boundary.rowwise() - V.row(loop[i])).rowwise().norm().minCoeff(&min);
+                rhs_fixed.row(t_i) = c_weight * 1.0 * V_target_boundary.row(min);
+            }
         }
     
         igl::slice(V_template, boundary_indices, 1, V_boundary);
@@ -583,6 +600,8 @@ int main(int argc, char *argv[]) {
         // add new group
         if (ImGui::CollapsingHeader("Warping options", ImGuiTreeNodeFlags_DefaultOpen)) {
             ImGui::InputDouble("Lambda", &lambda, 0, 0);
+
+            ImGui::Checkbox("Use scanned boundary", &use_scanned_boundary);
 
             if (ImGui::Button("Rigidly align", ImVec2(-1, 0))) {
                 rigid_align();
