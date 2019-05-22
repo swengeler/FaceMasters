@@ -556,18 +556,19 @@ int main(int argc, char *argv[]) {
     }
 
     // load data and initialize everything
+    size_t index = file_name.find_last_of("/");
+    string directory_name = file_name.substr(0, index + 1);
+
     MatrixXd temp1;
     MatrixXi temp2, temp3;
-    igl::readOBJ("../data/template.obj", V_template, temp1, N_template, F_template, temp2, temp3);
-    readLandmark("../data/template.mark", landmarks_template_points, landmarks_template, V_template);
+    igl::readOBJ(directory_name + "template.obj", V_template, temp1, N_template, F_template, temp2, temp3);
+    readLandmark(directory_name + "template.mark", landmarks_template_points, landmarks_template, V_template);
 
-    igl::readOBJ( file_name + ".obj", V_scanned, temp1, N_scanned, F_scanned, temp2, temp3);
-    readLandmark( file_name + ".mark", landmarks_scanned_points, landmarks_scanned, V_scanned);
+    igl::readOBJ(file_name + ".obj", V_scanned, temp1, N_scanned, F_scanned, temp2, temp3);
+    readLandmark(file_name + ".mark", landmarks_scanned_points, landmarks_scanned, V_scanned);
 
     display_two_meshes(V_template, F_template, V_scanned, F_scanned);
 
-    size_t index = file_name.find_last_of("/");
-    file_name = file_name.substr(index + 1);
     init();
 
     igl::opengl::glfw::imgui::ImGuiMenu menu;
@@ -592,7 +593,7 @@ int main(int argc, char *argv[]) {
             }
 
             if (ImGui::Button("Save mesh", ImVec2(-1, 0))) {
-                igl::writeOBJ("../results/" + file_name, V_template, F_template);
+                igl::writeOBJ(file_name + "_warped.obj", V_template, F_template);
             }
         }
     };
