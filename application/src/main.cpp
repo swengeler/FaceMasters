@@ -54,10 +54,12 @@ void readFaceAndAddToFaces(string face) {
 
 void readFaces(string baseDir) {
     cout << "Loading faces from: " << baseDir << endl;
+    
+    string names[] = {"ali", "arda", "christian", "karlis", "patrick", "qais", "shanshan", "simonh", "simonw"};
 
     for (int i = 0; i < 9; i++) {
-        string normal = baseDir + "/person" + to_string(i+1) + "_normal.obj";
-        string smile = baseDir + "/person" + to_string(i+1) + "_smile.obj";
+        string normal = baseDir + names[i] + "_neutral/0_SFusion.obj";
+        string smile = baseDir + names[i] + "_smile/0_SFusion.obj";
 
         if (!igl::is_file(normal.c_str())) {
             cout << "face: " << normal << " not found, quitting loading" << endl;
