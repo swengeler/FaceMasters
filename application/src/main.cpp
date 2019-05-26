@@ -55,15 +55,15 @@ void readFaceAndAddToFaces(string face) {
 void readFaces(string baseDir) {
     cout << "Loading faces from: " << baseDir << endl;
     
-    string names[] = {"ali", "arda", "christian", "karlis", "patrick", "qais", "shanshan", "simonh", "simonw"};
+    vector<string> names{"ali", "arda", "christian", "karlis", "patrick", "qais", "shanshan", "simonh", "simonw"};
 
-    for (int i = 0; i < 9; i++) {
-        string normal = baseDir + names[i] + "_neutral/0_SFusion.obj";
-        string smile = baseDir + names[i] + "_smile/0_SFusion.obj";
+    for (int i = 0; i < names.size(); i++) {
+        string normal = baseDir + names[i] + "_neutral_corrected_warped.obj";
+        string smile = baseDir + names[i] + "_smile_corrected_warped.obj";
 
         if (!igl::is_file(normal.c_str())) {
-            cout << "face: " << normal << " not found, quitting loading" << endl;
-            break;
+            cout << "face: " << normal << " not found, skipping" << endl;
+            continue;
         }
 
         readFaceAndAddToFaces(normal);
@@ -71,6 +71,9 @@ void readFaces(string baseDir) {
     }
 
     cout << "loaded: " << V_Faces.cols() << " faces" << " with " << V_Faces.rows() << " points each" << endl;
+    if (noEigenfaces > V_Faces.cols()) {
+        throw "More eigenfaces than faces available as input!";
+    }
 }
 
 
@@ -144,6 +147,10 @@ int main(int argc, char *argv[]) {
               drawComposedFace();
             }
           }
+        }
+
+        if (ImGui::Button("Save mesh", ImVec2(-1, 0))) {
+            igl::writeOBJ(baseDir + "eigenface_mixture.obj", V_Eigenfaces, F);
         }
 
     };
