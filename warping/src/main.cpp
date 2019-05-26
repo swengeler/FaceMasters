@@ -116,8 +116,6 @@ void display_two_meshes(MatrixXd &V1, MatrixXi &F1, MatrixXd &V2, MatrixXi &F2) 
 
 }
 
-double scaling_factor;
-
 void rigid_align() {
     // move template and scanned face to center
     RowVector3d mean_template = V_template.colwise().mean();
@@ -332,7 +330,7 @@ void build_dynamic_constraints(SparseMatrix<double> &A, MatrixXd &rhs) {
     tree_scanned.init(V_scanned, F_scanned);
     igl::per_face_normals(V_scanned, F_scanned, Vector3d(1, 1, 1).normalized(), N_scanned);
 
-    
+
     igl::per_face_normals(V_template, F_template, Vector3d(1, 1, 1).normalized(), N_template);
 
     // compute average distance of vertices in the template to the scanned face
@@ -353,7 +351,7 @@ void build_dynamic_constraints(SparseMatrix<double> &A, MatrixXd &rhs) {
     // would be best to resize constraint matrices here already...
     Vector3d vertex_template, normal_template, normal_scanned, closest_point_scanned, diff_scanned_template;
     int constraint_count = 0;
-   
+
     vector<Triplet<double>> lhs_vector;
     vector<RowVector3d> rhs_vector;
     for (int i = 0; i < V_template.rows(); i++) {
@@ -414,6 +412,10 @@ void build_dynamic_constraints(SparseMatrix<double> &A, MatrixXd &rhs) {
 
 void warping_step() {
 
+    if (landmarks_template.size() != landmarks_scanned.size()) {
+        throw "Number of landmarks must be the same for template and scanned face!";
+    }
+
     double c_weight = lambda * 10;
 
     MatrixXd V = V_template;
@@ -470,7 +472,7 @@ void warping_step() {
                 rhs_fixed.row(t_i) = c_weight * 1.0 * V_target_boundary.row(min);
             }
         }
-    
+
         igl::slice(V_template, boundary_indices, 1, V_boundary);
 
         boundary_tree.init(V_boundary, F_boundary);
@@ -497,7 +499,7 @@ void warping_step() {
     igl::cat(1, laplacian, C_full, Afull);
     MatrixXd rhs_full;
     igl::cat(1, rhs, C_full_rhs, rhs_full);
-    
+
     // Solve
     rhs_full = Afull.transpose() * rhs_full;
     Afull = Afull.transpose() * Afull;

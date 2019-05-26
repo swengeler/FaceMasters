@@ -44,11 +44,13 @@ bool mouse_down(Viewer& viewer, int button, int modifier) {
             
             int v1 = F(fid, 0), v2 = F(fid, 1), v3 = F(fid, 2);
             float alpha = baryC[0], beta = baryC[1], gamma = baryC[2];
-
+            
             Landmark mark = {v1, v2, v3, alpha, beta, gamma};
             landmarks.push_back(mark);
+
             // max bary coords, get nearearst vertex
             long c; baryC.maxCoeff(&c);
+            
             RowVector3d nn_vertex = V.row(F(fid,c));
             return true;
         }
@@ -150,6 +152,7 @@ bool callback_pre_draw(Viewer& viewer) {
         RowVector3d point = V.row(mark.v1)*mark.alpha + V.row(mark.v2)*mark.beta + V.row(mark.v3)*mark.gamma;
         viewer.data().add_points(point, Eigen::RowVector3d(0.0,0.5,0.3));
     }
+    return false;
 }
 
 
