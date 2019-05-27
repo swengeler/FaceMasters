@@ -75,8 +75,11 @@ void display_two_meshes(MatrixXd &V1, MatrixXi &F1, MatrixXd &V2, MatrixXi &F2) 
     Eigen::MatrixXd point_scanned(landmarks_scanned.size(), 3);
 
     for (int i = 0; i < landmarks_scanned.size(); ++i) {
-        point_template.row(i) = V1.row(landmarks_template(i));
         point_scanned.row(i) = V2.row(landmarks_scanned(i));
+    }
+
+    for (int i = 0; i < landmarks_template.size(); ++i) {
+        point_template.row(i) = V1.row(landmarks_template(i));
     }
 
     if (active_view == VIEW_TEMPLATE) {
@@ -283,7 +286,7 @@ void compute_initial_constraints() {
     // depends on how landmarks are represented, would probably be easiest to just use vertex indices
     constraint_matrix_static.resize(landmarks_template.size(), V_template.rows());
     constraint_rhs_static.resize(landmarks_template.size(), 3);
-    for (int i = 0; i < landmarks_template.size(); i++) {
+    for (int i = 0; i < landmarks_scanned.size(); i++) {
         // add constraint with weight 1 => less than for boundary but more than for rest of face
         constraint_matrix_static.insert(constraint_count, landmarks_template(i)) = 1.0 * lambda;
         constraint_rhs_static.row(constraint_count) = V_scanned.row(landmarks_scanned(i)) * lambda;
@@ -293,6 +296,7 @@ void compute_initial_constraints() {
     // compute constraints for the boundary
     vector<vector<DenseIndex>> boundary_loops;
     igl::boundary_loop(F_template, boundary_loops);
+
     boundary_indices.resize(boundary_loops[0].size());
     constraint_matrix_static.conservativeResize(constraint_matrix_static.rows() + boundary_indices.size(), V_template.rows());
     constraint_rhs_static.conservativeResize(constraint_matrix_static.rows(), 3);
@@ -413,7 +417,12 @@ void build_dynamic_constraints(SparseMatrix<double> &A, MatrixXd &rhs) {
 void warping_step() {
 
     if (landmarks_template.size() != landmarks_scanned.size()) {
-        throw "Number of landmarks must be the same for template and scanned face!";
+        if (landmarks_template.size() < landmarks_scanned.size()) {
+            throw "Number of landmarks must be the same for template and scanned face!";
+        }
+        else {
+            cout << "Using additional landmarks as contraints" << endl;
+        }
     }
 
     double c_weight = lambda * 10;
@@ -439,9 +448,13 @@ void warping_step() {
         C.resize(landmarks_template.size() + loop.size(), V.rows());
         rhs_fixed.resize(landmarks_template.size() + loop.size(), 3);
 
-        for (int i = 0; i < landmarks_template.size(); ++i) {
+        for (int i = 0; i < landmarks_scanned.size(); ++i) {
             C.insert(i, landmarks_template(i)) = c_weight;
             rhs_fixed.row(i) = c_weight * V_scanned.row(landmarks_scanned(i));
+        }
+
+        for (int i = landmarks_scanned.size(); i < landmarks_template.size(); ++i) {
+            boundary_loops[0].push_back(landmarks_template[i]);
         }
 
         boundary_indices.resize(loop.size());
@@ -461,15 +474,15 @@ void warping_step() {
             F_boundary.row(i) = RowVector3i(i, i, i);
 
             int t_i = i + landmarks_template.size();
-            C.insert(t_i, loop[i]) = c_weight * 1.0;
+            C.insert(t_i, loop[i]) = c_weight * 100.0;
             if (!use_scanned_boundary) {
                 // use original point on the template
-                rhs_fixed.row(t_i) = c_weight * 1.0 * V.row(loop[i]);
+                rhs_fixed.row(t_i) = c_weight * 100.0 * V.row(loop[i]);
             } else {
                 // use closest point on scanned face boundary
                 int min;
                 (V_target_boundary.rowwise() - V.row(loop[i])).rowwise().norm().minCoeff(&min);
-                rhs_fixed.row(t_i) = c_weight * 1.0 * V_target_boundary.row(min);
+                rhs_fixed.row(t_i) = c_weight * 100.0 * V_target_boundary.row(min);
             }
         }
 
@@ -587,12 +600,29 @@ int main(int argc, char *argv[]) {
 
     MatrixXd temp1;
     MatrixXi temp2, temp3;
-    igl::readOBJ(directory_name + "template.obj", V_template, temp1, N_template, F_template, temp2, temp3);
-    readLandmark(directory_name + "template.mark", landmarks_template_points, landmarks_template, V_template);
+    if (argc != 3 && false) {
+        igl::readOBJ(directory_name + "template.obj", V_template, temp1, N_template, F_template, temp2, temp3);
+        readLandmark(directory_name + "template.mark", landmarks_template_points, landmarks_template, V_template);
 
-    igl::readOBJ(file_name + ".obj", V_scanned, temp1, N_scanned, F_scanned, temp2, temp3);
-    readLandmark(file_name + ".mark", landmarks_scanned_points, landmarks_scanned, V_scanned);
+        igl::readOBJ(file_name + ".obj", V_scanned, temp1, N_scanned, F_scanned, temp2, temp3);
+        readLandmark(file_name + ".mark", landmarks_scanned_points, landmarks_scanned, V_scanned);
+    }
+    else
+    {
+        file_name = "path/to/project/root";
+        igl::readOBJ(file_name + "face.obj", V_template, temp1, N_template, F_template, temp2, temp3);
+        readLandmark(file_name + "face.mark", landmarks_template_points, landmarks_template, V_template);
 
+        igl::readOBJ(file_name + "average_face.obj", V_scanned, temp1, N_scanned, F_scanned, temp2, temp3);
+        readLandmark(file_name + "average_face.mark", landmarks_scanned_points, landmarks_scanned, V_scanned);
+
+        int real_num = min(landmarks_template_points.rows(), landmarks_scanned_points.rows());
+        landmarks_template_points.conservativeResize(real_num, landmarks_template_points.cols());
+        landmarks_scanned_points.conservativeResize(real_num, landmarks_scanned_points.cols());
+
+        cout << landmarks_template_points.rows() << " " << landmarks_template_points.cols() << endl;
+        cout << landmarks_scanned_points.rows() << " " << landmarks_scanned_points.cols() << endl;
+    }
     display_two_meshes(V_template, F_template, V_scanned, F_scanned);
 
     init();
