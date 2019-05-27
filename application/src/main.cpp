@@ -98,10 +98,10 @@ void pca() {
     V_Eigenfaces = V_Faces * eig.eigenvectors().real();
     averageFace = Map<MatrixXd>(avg_face.data(), 3, V_Eigenfaces.rows()/3).transpose();
 }
-
+MatrixXd composedFace;
 
 void drawComposedFace(){
-  MatrixXd composedFace = averageFace;
+  composedFace = averageFace;
 
   for (int i = 0; i < noEigenfaces; i++) {
     MatrixXd eigenface = Map<MatrixXd>(V_Eigenfaces.col(i).data(), 3, V_Eigenfaces.rows()/3).transpose();
@@ -150,7 +150,7 @@ int main(int argc, char *argv[]) {
         }
 
         if (ImGui::Button("Save mesh", ImVec2(-1, 0))) {
-            igl::writeOBJ(baseDir + "eigenface_mixture.obj", V_Eigenfaces, F);
+            igl::writeOBJ(baseDir + "eigenface_mixture.obj", composedFace, F);
         }
 
     };
