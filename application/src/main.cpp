@@ -23,7 +23,7 @@ MatrixXd V_Faces(0,0);
 MatrixXi F;
 
 // solver for PCA
-EigenSolver<MatrixXd> eig;
+SelfAdjointEigenSolver<MatrixXd> eig;
 
 // number of eigenfaces to use
 int noEigenfaces = 5;
@@ -85,7 +85,7 @@ void pca() {
     V_Faces.colwise() -= avg_face;
 
     // calculate eigenvectors and values on covariance matrix of faces
-    eig = EigenSolver<MatrixXd>(V_Faces.transpose()*V_Faces);
+    eig = SelfAdjointEigenSolver<MatrixXd>(V_Faces.transpose()*V_Faces);
     eig.eigenvalues();
     eig.eigenvectors();
 
@@ -96,7 +96,7 @@ void pca() {
     }
 
     // compute eigenfaces and average face
-    V_Eigenfaces = V_Faces * eig.eigenvectors().real();
+    V_Eigenfaces = V_Faces * eig.eigenvectors().reverse().real();
     averageFace = Map<MatrixXd>(avg_face.data(), 3, V_Eigenfaces.rows()/3).transpose();
 }
 MatrixXd composedFace;
