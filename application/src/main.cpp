@@ -7,6 +7,7 @@
 #include <igl/unproject_onto_mesh.h>
 #include <string>
 #include <igl/is_file.h>
+#include <igl/png/readPNG.h>
 
 using namespace Eigen;
 using namespace std;
@@ -54,7 +55,7 @@ void readFaceAndAddToFaces(string face) {
 
 void readFaces(string baseDir) {
     cout << "Loading faces from: " << baseDir << endl;
-    
+
     vector<string> names{"ali", "arda", "christian", "karlis", "patrick", "qais", "shanshan", "simonh", "simonw"};
 
     for (int i = 0; i < names.size(); i++) {
@@ -109,13 +110,13 @@ void drawComposedFace(){
   }
 
   // update visualised data
-  
-  //viewer.data().clear(); // clear mesh 
+
+  //viewer.data().clear(); // clear mesh
 
 
   viewer.data().set_mesh(composedFace, F);
   viewer.data().compute_normals();
-  
+
  // FN.setZero(F.rows(), 3);
  // igl::per_face_normals(composedFace, F, FN);
  // viewer.data().set_normals(FN);
@@ -125,13 +126,16 @@ void drawComposedFace(){
 
 int main(int argc, char *argv[]) {
     string baseDir;
-    if(argc == 1) {
+    Eigen::Matrix<unsigned char,Eigen::Dynamic,Eigen::Dynamic> R,G,B,A;
+
+    if(argc == 1 || argc == 2) {
         cout << "---------------------------" << endl;
-        cout << "Usage <bin> facefolder" << endl;
+        cout << "Usage <bin> facefolder. Also include ../skin.jpg as argument." << endl;
         cout << "---------------------------" << endl;
         return 0;
     } else {
         baseDir = string(argv[1]);
+        igl::png::readPNG(argv[2],R,G,B,A);
         readFaces(baseDir);
         pca();
         eigenFaceWeights[0] = 1.0f;
@@ -141,7 +145,12 @@ int main(int argc, char *argv[]) {
     igl::opengl::glfw::imgui::ImGuiMenu menu;
     viewer.plugins.push_back(&menu);
     viewer.core.align_camera_center(viewer.data().V);
+    //viewer.core.background_color << 253/255.0f, 246/255.0f, 228/255.0f, 1.0f;
+    viewer.data().set_texture(R,G,B,A);
+    viewer.data().set_face_based(false);
     viewer.data().show_lines = false;
+    viewer.data().show_texture = true;
+    viewer.launch_init(true,false);
 
     // Draw additional windows
     menu.callback_draw_viewer_menu = [&]() {
@@ -166,7 +175,41 @@ int main(int argc, char *argv[]) {
     };
 
     viewer.callback_pre_draw = callback_pre_draw;
-    viewer.launch();
+
+    viewer.data().meshgl.init();
+    igl::opengl::destroy_shader_program(viewer.data().meshgl.shader_mesh);
+    {
+      std::string mesh_vertex_shader_string =
+        R"(#version 150
+        uniform mat4 view;
+        uniform mat4 proj;
+        uniform mat4 normal_matrix;
+        in vec3 position;
+        in vec3 normal;
+        out vec3 normal_eye;
+
+        void main()
+        {
+          normal_eye = normalize(vec3 (normal_matrix * vec4 (normal, 0.0)));
+          gl_Position = proj * view * vec4(position, 1.0);
+        })";
+
+      std::string mesh_fragment_shader_string =
+        R"(#version 150
+        in vec3 normal_eye;
+        out vec4 outColor;
+        uniform sampler2D tex;
+        void main()
+        {
+          vec2 uv = normalize(normal_eye).xy * 0.5 + 0.5;
+          outColor = texture(tex, uv);
+        })";
+
+      igl::opengl::create_shader_program(mesh_vertex_shader_string,mesh_fragment_shader_string,{},viewer.data().meshgl.shader_mesh);
+    }
+
+    viewer.launch_rendering(true);
+    viewer.launch_shut();
 }
 
 
