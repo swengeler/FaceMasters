@@ -109,7 +109,17 @@ void drawComposedFace(){
   }
 
   // update visualised data
+  
+  //viewer.data().clear(); // clear mesh 
+
+
   viewer.data().set_mesh(composedFace, F);
+  viewer.data().compute_normals();
+  
+ // FN.setZero(F.rows(), 3);
+ // igl::per_face_normals(composedFace, F, FN);
+ // viewer.data().set_normals(FN);
+ //viewer.core.align_camera_center(composedFace);
 }
 
 
