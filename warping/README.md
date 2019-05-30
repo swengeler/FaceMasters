@@ -1,0 +1,5 @@
+# Rigid alignment and warping
+
+_FaceMasters-Warping_ loads a specified scanned face mesh and the template mesh from the same folder (note: do not provide a file extension), along with the landmarks created using _FaceMasters-LandmarkSelection_. The two meshes can then be rigidly aligned and the template mesh can be warped to match the scanned one. 
+
+It is best to start off with a low value of **Lambda** and do a few warping iterations until the landmarks of the two meshes match. Then the **Lambda** value can be increased, so that the detailed facial features match as well. The **Sigma** value determines how rigidly the template vertices are matched to the scanned mesh depending on their distance to the boundary. With high **Sigma** values the transition between vertices in the warped template matched to ones on the scanned mesh and those vertices without a match is smoother, but it takes more iterations for details of the scanned mesh to be matched.
