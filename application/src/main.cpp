@@ -25,8 +25,8 @@ MatrixXd V_Faces(0,0);
 MatrixXi F;
 MatrixXd person_one;
 MatrixXd person_two;
-MatrixXd coeffs_one; 
-MatrixXd coeffs_two; 
+MatrixXd coeffs_one;
+MatrixXd coeffs_two;
 // solver for PCA
 EigenSolver<MatrixXd> eig;
 int person_no;
@@ -50,6 +50,12 @@ void readFaceAndAddToFaces(string face) {
     igl::readOBJ(face, V_tmp, F_tmp);
     // all F_tmp should be the same
     F = F_tmp;
+
+    // Rotate faces to look at camera
+    Quaterniond q = Quaterniond().setFromTwoVectors(Vector3d::UnitZ(),Vector3d::UnitY());
+    Matrix3d T = q.toRotationMatrix();
+    V_tmp = (T*V_tmp.transpose()).transpose();
+
     // eigen stores the values in column by column format
     // so to get row by row we have to transpose first
     V_tmp.transposeInPlace();
@@ -126,7 +132,7 @@ void drawComposedFace(){
   // update visualised data
 
   //viewer.data().clear(); // clear mesh
-  
+
   composedFace = Map<MatrixXd>(composedFace.data(), 3, V_Eigenfaces.rows()/3);
   viewer.data().set_mesh(composedFace.transpose(), F);
   viewer.data().compute_normals();
@@ -148,7 +154,7 @@ void drawMorphing(){
 
   viewer.data().set_mesh(outFace.transpose(), F);
   viewer.data().compute_normals();
-  
+
 }
 
 int main(int argc, char *argv[]) {
@@ -204,11 +210,11 @@ int main(int argc, char *argv[]) {
               drawComposedFace();
             }
           }
-           
+
         }
        if (ImGui::CollapsingHeader("Person-to-Person Morpher", ImGuiTreeNodeFlags_DefaultOpen))
         {
-	if(ImGui::Checkbox("Smiling", &smile)){ 
+	if(ImGui::Checkbox("Smiling", &smile)){
 	      person_one =  V_Faces.col(person_one_number*2+smile);
               person_two =  V_Faces.col(person_two_number*2+smile);
 	      coeffs_one = person_one.transpose() * V_Eigenfaces;
@@ -238,7 +244,7 @@ int main(int argc, char *argv[]) {
 	    eigenFaceWeights = vec;
 	    drawComposedFace();
           }
-       
+
 	   if (ImGui::Combo("Select Second Person", &person_two_number, "ali\0arda\0christian\0karlis\0patric\0qais\0shanshan\0simonh\0simonw\0"))
           {
 	    person_two = V_Faces.col(person_two_number*2+smile);
@@ -249,7 +255,7 @@ int main(int argc, char *argv[]) {
 	    eigenFaceWeights = vec;
             drawComposedFace();
           }
-    
+
         const string label_three = "Morph Person ";
 	if (ImGui::SliderFloat(label_three.c_str(), &morphVal, 0.0f, 1.0f)){
               drawMorphing();
@@ -261,7 +267,7 @@ int main(int argc, char *argv[]) {
   	    tmp_composed = Map<MatrixXd>(tmp_composed.data(), 3, V_Eigenfaces.rows()/3);
             igl::writeOBJ(baseDir + "eigenface_mixture.obj", tmp_composed, F);
         }
-	
+
     };
 
     viewer.callback_pre_draw = callback_pre_draw;
