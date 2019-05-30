@@ -1,0 +1,3 @@
+# Data
+
+The `RawScans` folder contains the scanned faces of all team members without an processing, with some processing having been performed on the meshes in the `ProcessedScans` folder. The `UltraProcessedScans` folder contains cleaned up meshes, where disconnected parts of the mesh have been removed and the meshes (particularly the boundaries) have been smoothed. These are the meshes used for the warping of the template, the results of which can be found in the `Warped` folder. `template.obj` contains the template used for warping (from the Basel face model) and `template.mark` contains the matching landmarks (defined by us).

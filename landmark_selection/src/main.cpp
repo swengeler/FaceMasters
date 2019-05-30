@@ -12,9 +12,7 @@
 using namespace Eigen;
 using namespace std;
 
-
 typedef igl::opengl::glfw::Viewer Viewer;
-
 
 bool callback_pre_draw(Viewer& viewer);
 void writeOut(string placeToBe);
@@ -30,8 +28,6 @@ MatrixXi F;
 bool selecting = false;
 vector<Landmark> landmarks;
 
-
-
 bool mouse_down(Viewer& viewer, int button, int modifier) {
     double x = viewer.current_mouse_x;
     double y = viewer.core.viewport(3) - viewer.current_mouse_y;
@@ -39,7 +35,7 @@ bool mouse_down(Viewer& viewer, int button, int modifier) {
     if (selecting) {
         Eigen::Vector3f baryC;
         int fid;     
-        if(igl::unproject_onto_mesh(Eigen::Vector2f(x,y), viewer.core.view,
+        if (igl::unproject_onto_mesh(Eigen::Vector2f(x,y), viewer.core.view,
             viewer.core.proj, viewer.core.viewport, V, F, fid, baryC)) {
             
             int v1 = F(fid, 0), v2 = F(fid, 1), v3 = F(fid, 2);
@@ -84,7 +80,6 @@ int main(int argc, char *argv[]) {
     viewer.plugins.push_back(&menu);
     viewer.core.align_camera_center(V);
 
-
     // Draw additional windows
     menu.callback_draw_custom_window = [&]() {
         ImGui::SetNextWindowPos(ImVec2(180.f * menu.menu_scaling(), 10), ImGuiSetCond_FirstUseEver);
@@ -98,13 +93,13 @@ int main(int argc, char *argv[]) {
         }
 
         if (ImGui::Button("Update Labels"))  {
-          // clear labels
-            viewer.data().labels_positions.resize(0,3);
+            // clear labels
+            viewer.data().labels_positions.resize(0, 3);
             viewer.data().labels_strings.clear();
 
             for (int i = 0; i < landmarks.size(); i++) {
                 Landmark mark = landmarks[i];
-                RowVector3d point = V.row(mark.v1)*mark.alpha + V.row(mark.v2)*mark.beta + V.row(mark.v3)*mark.gamma;
+                RowVector3d point = V.row(mark.v1) * mark.alpha + V.row(mark.v2) * mark.beta + V.row(mark.v3) * mark.gamma;
                 string ctr = std::to_string(i);
                 viewer.data().add_label(point, ctr);    
             }
@@ -128,8 +123,6 @@ int main(int argc, char *argv[]) {
 
             // Save it to a PNG
             igl::png::writePNG(R,G,B,A, copyf);
-
-            //igl::png::render_to_png(copyf, 1024, 1024);
         }
 
         ImGui::End();
@@ -142,8 +135,6 @@ int main(int argc, char *argv[]) {
     viewer.launch();
 }
 
-
-
 bool callback_pre_draw(Viewer& viewer) {
     // clear points
     viewer.data().set_points(MatrixXd::Zero(0,3), MatrixXd::Zero(0,3));
@@ -154,8 +145,6 @@ bool callback_pre_draw(Viewer& viewer) {
     }
     return false;
 }
-
-
 
 void writeOut(string placeToBe) {
     replace(placeToBe, ".obj", ".mark");
@@ -170,7 +159,5 @@ void writeOut(string placeToBe) {
     for (int i = 0; i < landmarks.size(); i++) {
         Landmark m = landmarks[i];
         s << i << " " << m.v1 << " " << m.v2 << " " << m.v3 << " " << m.alpha << " " << m.beta << " " << m.gamma << "\n";
-    }    
-
-
+    }
 }
