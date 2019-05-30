@@ -151,20 +151,6 @@ void drawMorphing(){
   
 }
 
-void drawFace(const MatrixXd &pers_face){
-  MatrixXd outFace = averageFace;
-  MatrixXd coeffs = pers_face.transpose() * V_Eigenfaces;
- 
-  for (int i = 0; i < 10; i++) {
-    outFace.noalias() += coeffs(0,i) * V_Eigenfaces.col(i);
-  }
-  outFace = Map<MatrixXd>(outFace.data(), 3, V_Eigenfaces.rows()/3);
-
-  viewer.data().set_mesh(outFace.transpose(), F);
-  viewer.data().compute_normals();
-  
-}
-
 int main(int argc, char *argv[]) {
     string baseDir;
     Eigen::Matrix<unsigned char,Eigen::Dynamic,Eigen::Dynamic> R,G,B,A;
@@ -225,6 +211,8 @@ int main(int argc, char *argv[]) {
 	if(ImGui::Checkbox("Smiling", &smile)){ 
 	      person_one =  V_Faces.col(person_one_number*2+smile);
               person_two =  V_Faces.col(person_two_number*2+smile);
+	      coeffs_one = person_one.transpose() * V_Eigenfaces;
+	      coeffs_two = person_two.transpose() * V_Eigenfaces;
 	      if(morphVal < 0.5){
 		MatrixXd coeffs = person_one.transpose() * V_Eigenfaces;
 	        vector<float> vec(coeffs.data(), coeffs.data() + coeffs.rows() * coeffs.cols());
