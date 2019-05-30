@@ -8,31 +8,39 @@
 #include <string>
 #include <igl/is_file.h>
 #include <igl/png/readPNG.h>
-
+#include <map>
 using namespace Eigen;
 using namespace std;
 
 
 typedef igl::opengl::glfw::Viewer Viewer;
 Viewer viewer;
-
+bool smile = false;
 bool callback_pre_draw(Viewer& viewer);
-
+int person_one_number = 0;
+int person_two_number = 0;
+int curr_person_no = 0;
 // each column is a face
 MatrixXd V_Faces(0,0);
 MatrixXi F;
-
+MatrixXd person_one;
+MatrixXd person_two;
+MatrixXd coeffs_one; 
+MatrixXd coeffs_two; 
 // solver for PCA
-SelfAdjointEigenSolver<MatrixXd> eig;
-
+EigenSolver<MatrixXd> eig;
+int person_no;
+float morphVal;
 // number of eigenfaces to use
-int noEigenfaces = 5;
+int noEigenfaces = 7;
 // average face (dim: #Vx3)
-MatrixXd averageFace;
+VectorXd averageFace;
 // eigenfaces stored column-wise
 MatrixXd V_Eigenfaces;
 // weights of eigenfaces controlled by sliders
 vector<float> eigenFaceWeights(noEigenfaces, 0.0f);
+
+
 
 
 void readFaceAndAddToFaces(string face) {
@@ -80,12 +88,12 @@ void readFaces(string baseDir) {
 
 void pca() {
     // calculate average face
-    VectorXd avg_face = V_Faces.rowwise().mean();
+    averageFace = V_Faces.rowwise().mean();
     // subtract average face
-    V_Faces.colwise() -= avg_face;
+    V_Faces.colwise() -= averageFace;
 
     // calculate eigenvectors and values on covariance matrix of faces
-    eig = SelfAdjointEigenSolver<MatrixXd>(V_Faces.transpose()*V_Faces);
+    eig = EigenSolver<MatrixXd>(V_Faces.transpose()*V_Faces);
     eig.eigenvalues();
     eig.eigenvectors();
 
@@ -94,27 +102,33 @@ void pca() {
     for (int i = 0; i < eig.eigenvectors().cols(); i++) {
         //VectorXd i_eigenvector = V_Faces*eig.eigenvectors().col(i);
     }
-
-    // compute eigenfaces and average face
-    V_Eigenfaces = V_Faces * eig.eigenvectors().reverse().real();
-    averageFace = Map<MatrixXd>(avg_face.data(), 3, V_Eigenfaces.rows()/3).transpose();
+    // compute normalized eigenfaces
+    V_Eigenfaces = V_Faces * eig.eigenvectors().real();
+     for (int i = 0; i < V_Eigenfaces.cols(); i++) {
+        V_Eigenfaces.col(i) =  V_Eigenfaces.col(i).normalized();
+    }
+    person_one = V_Faces.col(0);
+    person_two = V_Faces.col(0);
+    coeffs_one = person_one.transpose() * V_Eigenfaces;
+    coeffs_two = person_two.transpose() * V_Eigenfaces;
+    // compute  and average face
+    //averageFace = Map<MatrixXd>(avg_face.data(), 3, V_Eigenfaces.rows()/3).transpose();
 }
 MatrixXd composedFace;
 
 void drawComposedFace(){
   composedFace = averageFace;
-
   for (int i = 0; i < noEigenfaces; i++) {
-    MatrixXd eigenface = Map<MatrixXd>(V_Eigenfaces.col(i).data(), 3, V_Eigenfaces.rows()/3).transpose();
-    composedFace.noalias() += eigenFaceWeights[i] * eigenface;
+    //eigenface = Map<MatrixXd>(eigenface.data(), 3, V_Eigenfaces.rows()/3);
+    composedFace.noalias() += eigenFaceWeights[i] * V_Eigenfaces.col(i);
   }
 
   // update visualised data
 
   //viewer.data().clear(); // clear mesh
-
-
-  viewer.data().set_mesh(composedFace, F);
+  
+  composedFace = Map<MatrixXd>(composedFace.data(), 3, V_Eigenfaces.rows()/3);
+  viewer.data().set_mesh(composedFace.transpose(), F);
   viewer.data().compute_normals();
 
  // FN.setZero(F.rows(), 3);
@@ -123,6 +137,33 @@ void drawComposedFace(){
  //viewer.core.align_camera_center(composedFace);
 }
 
+void drawMorphing(){
+  MatrixXd outFace = averageFace;
+
+  MatrixXd diffs = coeffs_one - coeffs_two;
+  for (int i = 0; i < 10; i++) {
+    outFace.noalias() += (coeffs_one(0,i) - morphVal*diffs(0,i)) * V_Eigenfaces.col(i);
+  }
+  outFace = Map<MatrixXd>(outFace.data(), 3, V_Eigenfaces.rows()/3);
+
+  viewer.data().set_mesh(outFace.transpose(), F);
+  viewer.data().compute_normals();
+  
+}
+
+void drawFace(const MatrixXd &pers_face){
+  MatrixXd outFace = averageFace;
+  MatrixXd coeffs = pers_face.transpose() * V_Eigenfaces;
+ 
+  for (int i = 0; i < 10; i++) {
+    outFace.noalias() += coeffs(0,i) * V_Eigenfaces.col(i);
+  }
+  outFace = Map<MatrixXd>(outFace.data(), 3, V_Eigenfaces.rows()/3);
+
+  viewer.data().set_mesh(outFace.transpose(), F);
+  viewer.data().compute_normals();
+  
+}
 
 int main(int argc, char *argv[]) {
     string baseDir;
@@ -138,7 +179,7 @@ int main(int argc, char *argv[]) {
         igl::png::readPNG(argv[2],R,G,B,A);
         readFaces(baseDir);
         pca();
-        eigenFaceWeights[0] = 1.0f;
+        eigenFaceWeights[0] = 50.0f;
         drawComposedFace();
     }
 
@@ -160,18 +201,79 @@ int main(int argc, char *argv[]) {
         // Add new group: Sliders for eigenfaces
         if (ImGui::CollapsingHeader("Blending Eigenfaces", ImGuiTreeNodeFlags_DefaultOpen))
         {
+	if (ImGui::Button("Randomize"))
+		{
+		  for (int i = 0; i < noEigenfaces; i++){
+			eigenFaceWeights[i] = -50 + static_cast <float> (rand()) /( static_cast <float> (RAND_MAX/(50-(-50))));;
+		   }
+             	 drawComposedFace();
+		}
+ 	const string label = "Number of Eigenfaces ";
+	if (ImGui::SliderInt(label.c_str(), &noEigenfaces, 0, 10)){
+              drawComposedFace();
+            }
           for(int i=0; i<noEigenfaces; i++){
             const string label = "eigenface " + to_string(i);
-            if (ImGui::SliderFloat(label.c_str(), &eigenFaceWeights[i], 0.0f, 1.0f)){
+            if (ImGui::SliderFloat(label.c_str(), &eigenFaceWeights[i], -50.0f, 50.0f)){
               drawComposedFace();
             }
           }
+           
         }
+       if (ImGui::CollapsingHeader("Person-to-Person Morpher", ImGuiTreeNodeFlags_DefaultOpen))
+        {
+	if(ImGui::Checkbox("Smiling", &smile)){ 
+	      person_one =  V_Faces.col(person_one_number*2+smile);
+              person_two =  V_Faces.col(person_two_number*2+smile);
+	      if(morphVal < 0.5){
+		MatrixXd coeffs = person_one.transpose() * V_Eigenfaces;
+	        vector<float> vec(coeffs.data(), coeffs.data() + coeffs.rows() * coeffs.cols());
+	        eigenFaceWeights = vec;
+	        drawComposedFace();
+		morphVal = 0;
+	      }else{
+		MatrixXd coeffs = person_two.transpose() * V_Eigenfaces;
+	        vector<float> vec(coeffs.data(), coeffs.data() + coeffs.rows() * coeffs.cols());
+	        eigenFaceWeights = vec;
+	        drawComposedFace();
+		morphVal = 1;
+	      }
+	}
+
+       if (ImGui::Combo("Select First Person", &person_one_number, "ali\0arda\0christian\0karlis\0patric\0qais\0shanshan\0simonh\0simonw\0"))
+          {
+	    person_one = V_Faces.col(person_one_number*2+smile);
+	    morphVal = 0.0;
+	    curr_person_no = person_one_number*2;
+	    coeffs_one = person_one.transpose() * V_Eigenfaces;
+	    vector<float> vec(coeffs_one.data(), coeffs_one.data() + coeffs_one.rows() * coeffs_one.cols());
+	    eigenFaceWeights = vec;
+	    drawComposedFace();
+          }
+       
+	   if (ImGui::Combo("Select Second Person", &person_two_number, "ali\0arda\0christian\0karlis\0patric\0qais\0shanshan\0simonh\0simonw\0"))
+          {
+	    person_two = V_Faces.col(person_two_number*2+smile);
+  	    morphVal = 1.0;
+	    curr_person_no = person_two_number*2;
+	    coeffs_two = person_two.transpose() * V_Eigenfaces;
+	    vector<float> vec(coeffs_two.data(), coeffs_two.data() + coeffs_two.rows() * coeffs_two.cols());
+	    eigenFaceWeights = vec;
+            drawComposedFace();
+          }
+    
+        const string label_three = "Morph Person ";
+	if (ImGui::SliderFloat(label_three.c_str(), &morphVal, 0.0f, 1.0f)){
+              drawMorphing();
+            }
+	}
 
         if (ImGui::Button("Save mesh", ImVec2(-1, 0))) {
-            igl::writeOBJ(baseDir + "eigenface_mixture.obj", composedFace, F);
+	    MatrixXd tmp_composed = composedFace;
+  	    tmp_composed = Map<MatrixXd>(tmp_composed.data(), 3, V_Eigenfaces.rows()/3);
+            igl::writeOBJ(baseDir + "eigenface_mixture.obj", tmp_composed, F);
         }
-
+	
     };
 
     viewer.callback_pre_draw = callback_pre_draw;
