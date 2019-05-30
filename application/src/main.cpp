@@ -178,6 +178,7 @@ int main(int argc, char *argv[]) {
     igl::opengl::glfw::imgui::ImGuiMenu menu;
     viewer.plugins.push_back(&menu);
     viewer.core.align_camera_center(viewer.data().V);
+    viewer.core.camera_zoom = 1.5f;
     //viewer.core.background_color << 253/255.0f, 246/255.0f, 228/255.0f, 1.0f;
     viewer.data().set_texture(R,G,B,A);
     viewer.data().set_face_based(false);
