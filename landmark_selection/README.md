@@ -4,6 +4,8 @@ _FaceMasters-LandmarkSelection_ can be used to define landmarks on a template fa
 
 !["See landmarks_index.png if this image does not show up"](landmarks_index.png "Landmarks on the template face mesh")
 
+**Note**: to build the program, the CMAKE option `-DLIBIGL_WITH_PNG=ON` needs to be specified
+
 ### Format of the `*.mark` files:
 
 Each row has the format:
