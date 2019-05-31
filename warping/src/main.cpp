@@ -1,4 +1,3 @@
-// main source file for data preprocessing and face alignment
 #include <math.h>
 #include <igl/readOBJ.h>
 #include <igl/opengl/glfw/Viewer.h>
@@ -37,6 +36,8 @@ MatrixXd landmarks_scanned_points;
 igl::AABB<MatrixXd, 3> tree_scanned;
 
 // other data structures
+MatrixXi F_boundary;
+MatrixXd V_boundary;
 VectorXi boundary_indices;
 igl::AABB<MatrixXd, 3> boundary_tree;
 
@@ -45,7 +46,6 @@ double lambda = 0.05;
 double sigma = 5;
 double threshold_distance_percentage = 0.8;
 double threshold_parallel_angle_tolerance = 0.6;
-bool use_scanned_boundary = false;
 
 // constraints
 SparseMatrix<double> constraint_matrix_static;
@@ -63,16 +63,13 @@ double scaling_factor;
 enum MESH_VIEW { VIEW_SCANNED, VIEW_TEMPLATE, VIEW_BOTH};
 MESH_VIEW active_view = VIEW_BOTH;
 
-// other stuff
-int iteration_count = 0;
-
 void display_two_meshes(MatrixXd &V1, MatrixXi &F1, MatrixXd &V2, MatrixXi &F2) {
-    Eigen::MatrixXd V;
-    Eigen::MatrixXi F;
-    Eigen::MatrixXd C;
+    MatrixXd V;
+    MatrixXi F;
+    MatrixXd C;
 
-    Eigen::MatrixXd point_template(landmarks_template.size(), 3);
-    Eigen::MatrixXd point_scanned(landmarks_scanned.size(), 3);
+    MatrixXd point_template(landmarks_template.size(), 3);
+    MatrixXd point_scanned(landmarks_scanned.size(), 3);
 
     for (int i = 0; i < landmarks_scanned.size(); ++i) {
         point_template.row(i) = V1.row(landmarks_template(i));
@@ -84,12 +81,12 @@ void display_two_meshes(MatrixXd &V1, MatrixXi &F1, MatrixXd &V2, MatrixXi &F2) 
         F = F1;
 
         C.resize(F.rows(), 3);
-        C << Eigen::RowVector3d(0.2, 0.3, 0.8).replicate(F.rows(), 1);
+        C << RowVector3d(0.2, 0.3, 0.8).replicate(F.rows(), 1);
     } else if (active_view == VIEW_SCANNED) {
         V = V2;
         F = F2;
         C.resize(F.rows(), 3);
-        C << Eigen::RowVector3d(1.0, 0.7, 0.2).replicate(F.rows(), 1);
+        C << RowVector3d(1.0, 0.7, 0.2).replicate(F.rows(), 1);
     } else {
         V.resize(V1.rows() + V2.rows(), V1.cols());
         V << V1, V2;
@@ -97,7 +94,7 @@ void display_two_meshes(MatrixXd &V1, MatrixXi &F1, MatrixXd &V2, MatrixXi &F2) 
         F << F1, (F2.array() + V1.rows());
 
         C.resize(F.rows(), 3);
-        C << Eigen::RowVector3d(0.2, 0.3, 0.8).replicate(F1.rows(), 1), Eigen::RowVector3d(1.0, 0.7, 0.2).replicate(F2.rows(), 1);
+        C << RowVector3d(0.2, 0.3, 0.8).replicate(F1.rows(), 1), RowVector3d(1.0, 0.7, 0.2).replicate(F2.rows(), 1);
     }
 
 	viewer.data().clear();
@@ -107,13 +104,12 @@ void display_two_meshes(MatrixXd &V1, MatrixXi &F1, MatrixXd &V2, MatrixXi &F2) 
 	viewer.core.align_camera_center(V1);
 
     if (active_view == VIEW_BOTH || active_view == VIEW_SCANNED) {
-        viewer.data().add_points(point_scanned, Eigen::RowVector3d(0.0, 1.0, 0.0).replicate(point_scanned.rows(), 1));
+        viewer.data().add_points(point_scanned, RowVector3d(0.0, 1.0, 0.0).replicate(point_scanned.rows(), 1));
     }
 
     if (active_view == VIEW_BOTH || active_view == VIEW_TEMPLATE) {
-        viewer.data().add_points(point_template, Eigen::RowVector3d(1.0, 0.0, 0.0).replicate(point_template.rows(), 1));
+        viewer.data().add_points(point_template, RowVector3d(1.0, 0.0, 0.0).replicate(point_template.rows(), 1));
     }
-
 }
 
 void rigid_align() {
@@ -162,12 +158,7 @@ void init() {
     igl::per_face_normals(V_scanned, F_scanned, Vector3d(1, 1, 1).normalized(), N_scanned);
 }
 
-
-MatrixXi F_boundary;
-MatrixXd V_boundary;
-
 void build_dynamic_constraints(SparseMatrix<double> &A, MatrixXd &rhs) {
-
     // These two should be precomputed after alignment
     tree_scanned.init(V_scanned, F_scanned);
     igl::per_face_normals(V_scanned, F_scanned, Vector3d(1, 1, 1).normalized(), N_scanned);
@@ -208,7 +199,7 @@ void build_dynamic_constraints(SparseMatrix<double> &A, MatrixXd &rhs) {
         // assign or compute the necessary points and vectors
         vertex_template = V_template.row(i);
         normal_template = N_template.row(i);
-        normal_scanned = N_scanned.row(face_indices(i)); // NOTE: these are per-face normals!
+        normal_scanned = N_scanned.row(face_indices(i));
         closest_point_scanned = closest_points.row(i);
         diff_scanned_template = closest_point_scanned - vertex_template;
 
@@ -249,9 +240,7 @@ void build_dynamic_constraints(SparseMatrix<double> &A, MatrixXd &rhs) {
     }
 }
 
-
 void warping_step() {
-
     if (landmarks_template.size() != landmarks_scanned.size()) {
         throw "Number of landmarks must be the same for template and scanned face!";
     }
@@ -301,15 +290,7 @@ void warping_step() {
 
             int t_i = i + landmarks_template.size();
             C.insert(t_i, loop[i]) = c_weight * 1.0;
-            if (!use_scanned_boundary) {
-                // use original point on the template
-                rhs_fixed.row(t_i) = c_weight * 1.0 * V.row(loop[i]);
-            } else {
-                // use closest point on scanned face boundary
-                int min;
-                (V_target_boundary.rowwise() - V.row(loop[i])).rowwise().norm().minCoeff(&min);
-                rhs_fixed.row(t_i) = c_weight * 1.0 * V_target_boundary.row(min);
-            }
+            rhs_fixed.row(t_i) = c_weight * 1.0 * V.row(loop[i]);
         }
 
         igl::slice(V_template, boundary_indices, 1, V_boundary);
@@ -326,15 +307,13 @@ void warping_step() {
     igl::cat(1, C, C_dynamic, C_full);
     igl::cat(1, rhs_fixed, C_dynamic_rhs, C_full_rhs);
 
-
     // Laplacian part of linear system
     igl::cotmatrix(V, F_template, laplacian);
     laplacian = -laplacian;
     rhs = laplacian * V;
 
-
     // Add together linear system
-    Eigen::SparseMatrix<double> Afull;
+    SparseMatrix<double> Afull;
     igl::cat(1, laplacian, C_full, Afull);
     MatrixXd rhs_full;
     igl::cat(1, rhs, C_full_rhs, rhs_full);
@@ -376,23 +355,25 @@ void readLandmark(string fileName, MatrixXd &points, VectorXi &indices, const Ma
 }
 
 bool callback_key_down(Viewer &viewer, unsigned char key, int modifiers) {
-
     if (key == 'R') {
         rigid_align();
     }
 
+    if (key == 'I') {
+        warping_step();
+    }
+
     if (key >= '1' && key <= '3') {
-        switch (key)
-        {
-        case '1':
-            active_view = VIEW_SCANNED;
-            break;
-        case '2':
-            active_view = VIEW_TEMPLATE;
-            break;
-        case '3':
-            active_view = VIEW_BOTH;
-            break;
+        switch (key) {
+            case '1':
+                active_view = VIEW_SCANNED;
+                break;
+            case '2':
+                active_view = VIEW_TEMPLATE;
+                break;
+            case '3':
+                active_view = VIEW_BOTH;
+                break;
         }
         display_two_meshes(V_template, F_template, V_scanned, F_scanned);
     }
@@ -403,8 +384,10 @@ bool callback_key_down(Viewer &viewer, unsigned char key, int modifiers) {
 int main(int argc, char *argv[]) {
     string file_name;
     if (argc != 2) {
-        cout << "Usage: alignment <scanned_face>" << endl;
-        file_name = "../data/simonw_neutral_corrected";
+        cout << "-------------------------------------------" << endl;
+        cout << "Usage: FaceMasters-Alignment <scanned_face>" << endl;
+        cout << "-------------------------------------------" << endl;
+        return 0;
     } else {
         file_name = argv[1];
     }
@@ -436,8 +419,6 @@ int main(int argc, char *argv[]) {
         if (ImGui::CollapsingHeader("Warping options", ImGuiTreeNodeFlags_DefaultOpen)) {
             ImGui::InputDouble("Lambda", &lambda, 0, 0);
             ImGui::InputDouble("Sigma", &sigma, 0, 0);
-
-            ImGui::Checkbox("Use scanned boundary", &use_scanned_boundary);
 
             if (ImGui::Button("Rigidly align", ImVec2(-1, 0))) {
                 rigid_align();

@@ -3,11 +3,10 @@
 #include <igl/opengl/glfw/imgui/ImGuiMenu.h>
 #include <igl/opengl/glfw/imgui/ImGuiHelpers.h>
 #include <imgui/imgui.h>
-#include <iostream>
 #include <igl/unproject_onto_mesh.h>
-#include <string> 
-#include <igl/png/render_to_png.h>
 #include <igl/png/writePNG.h>
+#include <iostream>
+#include <string> 
 
 using namespace Eigen;
 using namespace std;
@@ -33,9 +32,9 @@ bool mouse_down(Viewer& viewer, int button, int modifier) {
     double y = viewer.core.viewport(3) - viewer.current_mouse_y;
 
     if (selecting) {
-        Eigen::Vector3f baryC;
+        Vector3f baryC;
         int fid;     
-        if (igl::unproject_onto_mesh(Eigen::Vector2f(x,y), viewer.core.view,
+        if (igl::unproject_onto_mesh(Vector2f(x,y), viewer.core.view,
             viewer.core.proj, viewer.core.viewport, V, F, fid, baryC)) {
             
             int v1 = F(fid, 0), v2 = F(fid, 1), v3 = F(fid, 2);
@@ -65,10 +64,10 @@ bool replace(string& str, const string& from, const string& to) {
 
 int main(int argc, char *argv[]) {
     string faceName;
-    if(argc == 1) {
-        cout << "---------------------------" << endl;
-        cout << "Usage <bin> face.obj" << endl;
-        cout << "---------------------------" << endl;
+    if (argc == 1) {
+        cout << "-----------------------------------------------" << endl;
+        cout << "Usage: FaceMasters-LandmarkSelection <face.obj>" << endl;
+        cout << "-----------------------------------------------" << endl;
         return 0;
     } else {
         faceName = string(argv[1]);
@@ -84,7 +83,7 @@ int main(int argc, char *argv[]) {
     menu.callback_draw_custom_window = [&]() {
         ImGui::SetNextWindowPos(ImVec2(180.f * menu.menu_scaling(), 10), ImGuiSetCond_FirstUseEver);
         ImGui::SetNextWindowSize(ImVec2(200, 160), ImGuiSetCond_FirstUseEver);
-        ImGui::Begin( "Selection Window", nullptr, ImGuiWindowFlags_NoSavedSettings );
+        ImGui::Begin("Selection Window", nullptr, ImGuiWindowFlags_NoSavedSettings);
 
         ImGui::Checkbox("Start Selecting", &selecting);
         if (ImGui::Button("Remove last selected"))  {
@@ -103,8 +102,6 @@ int main(int argc, char *argv[]) {
                 string ctr = std::to_string(i);
                 viewer.data().add_label(point, ctr);    
             }
-
-            
         }
 
         if (ImGui::Button("Save"))  {
@@ -113,16 +110,16 @@ int main(int argc, char *argv[]) {
             replace(copyf, ".obj", ".png");
 
             // Allocate temporary buffers
-            Eigen::Matrix<unsigned char,Eigen::Dynamic,Eigen::Dynamic> R(1280,800);
-            Eigen::Matrix<unsigned char,Eigen::Dynamic,Eigen::Dynamic> G(1280,800);
-            Eigen::Matrix<unsigned char,Eigen::Dynamic,Eigen::Dynamic> B(1280,800);
-            Eigen::Matrix<unsigned char,Eigen::Dynamic,Eigen::Dynamic> A(1280,800);
+            Matrix<unsigned char,Dynamic,Dynamic> R(1280, 800);
+            Matrix<unsigned char,Dynamic,Dynamic> G(1280, 800);
+            Matrix<unsigned char,Dynamic,Dynamic> B(1280, 800);
+            Matrix<unsigned char,Dynamic,Dynamic> A(1280, 800);
 
             // Draw the scene in the buffers
-            viewer.core.draw_buffer(viewer.data(),false,R,G,B,A);
+            viewer.core.draw_buffer(viewer.data(), false, R, G, B, A);
 
             // Save it to a PNG
-            igl::png::writePNG(R,G,B,A, copyf);
+            igl::png::writePNG(R, G, B, A, copyf);
         }
 
         ImGui::End();
@@ -137,11 +134,11 @@ int main(int argc, char *argv[]) {
 
 bool callback_pre_draw(Viewer& viewer) {
     // clear points
-    viewer.data().set_points(MatrixXd::Zero(0,3), MatrixXd::Zero(0,3));
+    viewer.data().set_points(MatrixXd::Zero(0, 3), MatrixXd::Zero(0, 3));
 
     for (Landmark mark : landmarks) {
-        RowVector3d point = V.row(mark.v1)*mark.alpha + V.row(mark.v2)*mark.beta + V.row(mark.v3)*mark.gamma;
-        viewer.data().add_points(point, Eigen::RowVector3d(0.0,0.5,0.3));
+        RowVector3d point = V.row(mark.v1) * mark.alpha + V.row(mark.v2) * mark.beta + V.row(mark.v3) * mark.gamma;
+        viewer.data().add_points(point, RowVector3d(0.0,0.5,0.3));
     }
     return false;
 }
@@ -151,7 +148,7 @@ void writeOut(string placeToBe) {
     cout << "Save To: " << placeToBe  << endl;
 
     ofstream s(placeToBe);
-    if(!s.is_open()) {
+    if (!s.is_open()) {
         fprintf(stderr,"IOError: writeOut() could not open %s\n", placeToBe.c_str());
         return;
     }
